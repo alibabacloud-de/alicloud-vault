@@ -9,6 +9,7 @@ Full release and documentation will follow very soon.
 
 You can install Alicloud Vault:
 - by downloading the [latest release](https://github.com/arafato/alicloud-vault/releases/latest)
+- on Arch Linux with the [AUR](https://aur.archlinux.org/packages/alicloud-vault/): `yay -S alicloud-vault`
 
 ## Vaulting Backends
 
@@ -31,10 +32,16 @@ $ alicloud-vault add jonsmith
 Enter Access Key Id: ABDCDEFDASDASF
 Enter Secret Key: %%%
 
-# Execute a command (using temporary credentials), note that you need to explicitly define the keys and token as flag since aliyun is not aware of env variables
-$ alicloud-vault exec jonsmith -- aliyun --profile johnsmith --access-key-id $ALICLOUD_ACCESS_KEY --access-key-secret $ALICLOUD_SECRET_KEY --sts-token $ALICLOUD_STS_TOKEN oss ls
+# Execute a command (using temporary credentials), note that you need to explicitly define the access key, secret and token as flag (enclosed with ') since aliyun is not aware of env variables
+# Environment variables that are not enclosed with ' are not automatically expanded based on the new session context but take the values from the current session.  
+$ alicloud-vault exec jonsmith -- aliyun --profile johnsmith --access-key-id '$ALICLOUD_ACCESS_KEY' --access-key-secret '$ALICLOUD_SECRET_KEY' --sts-token '$ALICLOUD_STS_TOKEN' oss ls
 bucket_1
 bucket_2
+
+# Export environment variables to new shell context and call Aliyun CLI sequentially
+$ alicloud-vault exec jonsmith
+$ aliyun --profile johnsmith --access-key-id $ALICLOUD_ACCESS_KEY --access-key-secret $ALICLOUD_SECRET_KEY --sts-token $ALICLOUD_STS_TOKEN oss ls
+
 
 # List credentials
 $ alicloud-vault ls
@@ -58,8 +65,10 @@ Alicloud Vault then exposes the temporary credentials to the sub-process through
    ```
 
 ## Profiles
-`alicloud-vault` is tightly integrated with `Aliyun` CLI and requires a matching profile in ~/.aliyun/config. This allows you to seamlessly use your Aliyun CLI configuration together with `alicloud-vault` and `aliyun` CLI.
-It will read configuration data such as `ram_role_arn` directly from this profile. Values defined here take precedence over environment variables. *Access Key ID* and *Access Key Secret* are always read from the keychain, obviously. 
+`alicloud-vault` is tightly integrated with `Aliyun` CLI and requires a matching profile in ~/.aliyun/config. This allows you to seamlessly use your Aliyun CLI configuration together with `alicloud-vault` and `aliyun` CLI. If you create a new profile in the `alicloud-vault` it will automatically create a matching profile in ~/.aliyun/config if it does not exist yet.
+It will read configuration data such as `ram_role_arn` directly from this profile. Values defined here take precedence over environment variables. *Access Key ID* and *Access Key Secret* are always read from the keychain, obviously.
+
+Note that if you do not specify `ram_role_arn` alicloud-vault will export your long-term credentials to your current shell if you execute `alicloud-vault exec <profilename>`. You can also force this behavior with the flag `--no-session`.
 
 Attributes that need to be specified for StsToken mode are
 - name (Required) - the name of your profile. This needs to match with your alicloud-vault profile name.

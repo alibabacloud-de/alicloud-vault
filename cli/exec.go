@@ -22,6 +22,7 @@ type ExecCommandInput struct {
 	Keyring         keyring.Keyring
 	Config          vault.Config
 	SessionDuration int
+	noSession       bool
 }
 
 func ConfigureExecCommand(app *kingpin.Application) {
@@ -32,6 +33,10 @@ func ConfigureExecCommand(app *kingpin.Application) {
 	cmd.Flag("duration", "Duration of the temporary or assume-role session. Defaults to 1h").
 		Short('d').
 		IntVar(&input.SessionDuration)
+
+	cmd.Flag("no-session", "Skip creating STS session with AssumeRole and use long-term credentials").
+		Short('n').
+		BoolVar(&input.noSession)
 
 	cmd.Arg("profile", "Name of the profile").
 		Required().
@@ -62,6 +67,11 @@ func ExecCommand(input ExecCommandInput) error {
 	}
 
 	credKeyring := &vault.CredentialKeyring{Keyring: input.Keyring}
+
+	if input.noSession {
+		config.RoleARN = ""
+	}
+
 	creds, err := vault.GenerateTempCredentials(config, credKeyring)
 	if err != nil {
 		return fmt.Errorf("Error getting temporary credentials for %s: %w", input.ProfileName, err)
@@ -82,6 +92,10 @@ func ExecCommand(input ExecCommandInput) error {
 	env.Set("ALICLOUD_SECRET_KEY", creds.Creds.SecretAccessKey)
 	env.Set("ALICLOUD_STS_TOKEN", creds.StsToken)
 	env.Set("ALICLOUD_SESSION_EXPIRATION", creds.Duration)
+
+	// Manually expanding all ALICLOUD_* environments variables that are enclosed with ''.
+	// Environment variables that are not enclosed with '' expand to empty strings if they have not been defined yet in the current shell.
+	input.Args = expandEnvironmentVariables(input.Args, env)
 
 	err = execSyscall(input.Command, input.Args, env)
 
@@ -104,6 +118,27 @@ func (e *environ) Unset(key string) {
 			break
 		}
 	}
+}
+
+func expandEnvironmentVariables(args, env []string) []string {
+	var expanded []string
+	for _, item := range args {
+		if strings.HasPrefix(item[1:], "ALICLOUD_") {
+			expanded = append(expanded, getValue(env, item[1:]))
+		} else {
+			expanded = append(expanded, item)
+		}
+	}
+	return expanded
+}
+
+func getValue(env []string, key string) string {
+	for _, item := range env {
+		if strings.HasPrefix(item, key) {
+			return strings.SplitN(item, "=", 2)[1]
+		}
+	}
+	return ""
 }
 
 // Set adds an environment variable, replacing any existing ones of the same key
